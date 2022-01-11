@@ -46,7 +46,7 @@ def format_lines_and_append_to_merged_file(input_file_path, merged_file_path):
         counter = 0
         for timestamp, x in pairwise(words):
             if timestamp and x:
-                row = ",".join([timestamp, calculate_y(int(x))])
+                row = ",".join([timestamp, str(calculate_y(int(x)))])
                 if row.endswith("\n"):
                     output_file.write(row)
                 else:
@@ -69,9 +69,9 @@ def get_timestamp_ecg_pair(line):
     return int(words[0]), int(words[1])
 
 
-def get_file_name(line, dest_path):
+def get_file_name(line, dest_path, file_type):
     timestamp = get_timestamp_ecg_pair(line)[0]
-    file_name = "".join([dest_path, "\ecg_", timestamp, ".csv"])
+    file_name = "".join([dest_path, "\ecg_", str(timestamp), f".{file_type}"])
     return file_name
 
 
@@ -97,34 +97,36 @@ def get_missing_timestamps(prev_line, curr_line, dest_file):
     curr_timestamp = get_timestamp_ecg_pair(curr_line)[0]
 
     for to_add in range(prev_timestamp + 8, curr_timestamp, 8):
-        dest_file.write("".join([to_add, ",-1\n"]))
+        dest_file.write("".join([str(to_add), ",-1\n"]))
 
 
 def remove_timestamp(line):
-    return line.split(",")[1]
+    words = line.split(",")
+    return words[1]
 
 
-def convert_to_ecg(src_file_path):
-    result_file_name = src_file_path.replace("csv", "ecg")
+def convert_to_ecg(src_file_path, dest_file_path):
     src_file = open(src_file_path, "r")
-    ecg_file = open(result_file_name, "a+")
+    ecg_file = open(dest_file_path, "a+")
     while True:
         line = src_file.readline()
 
         if not line:
             break
 
-        ecg_file.write("".join([remove_timestamp(line), "\n"]))
+        if line != '\n':
+            ecg_file.write(remove_timestamp(line))
 
     print(f"Converted {src_file_path} to ECG.")
-    return result_file_name
+    return dest_file_path
 
 
-def check_and_fill_in_blanks(src_file_path, dest_dir_path):
+def check_and_fill_in_blanks(src_file_path, csv_dest_dir_path, ecg_dest_dir_path):
     src_file = open(src_file_path, "r")
     prev_line = src_file.readline()
-    dest_file_name = get_file_name(prev_line, dest_dir_path)
-    dest_file = open(dest_file_name, "a+")
+    temp_csv_file_name = get_file_name(prev_line, csv_dest_dir_path, "csv")
+    dest_ecg_file_name = get_file_name(prev_line, ecg_dest_dir_path, "ecg")
+    dest_file = open(temp_csv_file_name, "a+")
     while True:
         # Get next line from file
         curr_line = src_file.readline()
@@ -135,14 +137,19 @@ def check_and_fill_in_blanks(src_file_path, dest_dir_path):
 
         if are_there_missing_timestamps(prev_line, curr_line):
             if calculate_difference(prev_line, curr_line) > 30000:
+                dest_file.write(prev_line)
                 dest_file.close()
-                convert_to_ecg(dest_file_name)
-                dest_file_name = get_file_name(curr_line, dest_dir_path)
-                open(dest_file_name, "a+")
+                convert_to_ecg(temp_csv_file_name, dest_ecg_file_name)
+                prev_line = curr_line
+                temp_csv_file_name = get_file_name(prev_line, csv_dest_dir_path, "csv")
+                dest_ecg_file_name = get_file_name(prev_line, ecg_dest_dir_path, "ecg")
+                dest_file = open(temp_csv_file_name, "a+")
+                continue
             else:
                 get_missing_timestamps(prev_line, curr_line, dest_file)
+
+        dest_file.write(prev_line)
         prev_line = curr_line
-        dest_file.write("".join([prev_line, "\n"]))
 
     dest_file.close()
-    convert_to_ecg(dest_file_name)
+    convert_to_ecg(temp_csv_file_name, dest_ecg_file_name)
